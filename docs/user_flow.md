@@ -25,6 +25,20 @@ flowchart TB
     SaveConfig --> MainUI
     CancelSettings --> MainUI
     
+    %% Log Viewer Branch
+    MainUI --> ViewLogs{User Clicks View Logs?}
+    ViewLogs -->|Yes| OpenLogViewer[Open Log Panel]
+    OpenLogViewer --> LogActions{Log Actions?}
+    LogActions -->|Filter| FilterLogs[Filter by Level]
+    LogActions -->|Export| ExportLogs[Export as JSON/TXT]
+    LogActions -->|Clear| ClearLogs[Clear All Logs]
+    LogActions -->|Close| CloseLogViewer[Close Panel]
+    FilterLogs --> OpenLogViewer
+    ExportLogs --> DownloadLogs[Download Log File]
+    ClearLogs --> OpenLogViewer
+    CloseLogViewer --> MainUI
+    DownloadLogs --> OpenLogViewer
+    
     %% Upload Flow
     ShowModel --> UploadChoice{Upload Method?}
     UploadChoice -->|Drag & Drop| DragFile[User Drags File to Zone]
@@ -59,7 +73,8 @@ flowchart TB
     
     %% Processing Flow
     StartProcess --> ShowLoading[Display Loading Indicator]
-    ShowLoading --> SendToBackend[Send to Backend API]
+    ShowLoading --> LogProcessStart[📝 Log: Processing Started]
+    LogProcessStart --> SendToBackend[Send to Backend API]
     
     SendToBackend --> BackendProcess{Backend Processing}
     BackendProcess --> PDFCheck{Is PDF?}
@@ -75,10 +90,18 @@ flowchart TB
     
     %% Result Handling
     ReturnText --> ProcessResult{Processing Result?}
-    ProcessResult -->|Success| DisplayText[Display Extracted Text<br/>in Results Panel]
-    ProcessResult -->|Failed| ShowProcessError[Show Processing Error]
+    ProcessResult -->|Success| LogSuccess[📝 Log: Processing Complete]
+    ProcessResult -->|Failed| LogError[📝 Log: Processing Failed]
     
-    ShowProcessError --> RetryOption{Retry?}
+    LogSuccess --> DisplayText[Display Extracted Text<br/>in Results Panel]
+    LogError --> ShowProcessError[Show Processing Error]
+    
+    ShowProcessError --> GenerateReport{Generate Error Report?}
+    GenerateReport -->|Yes| CreateReport[Create Error Report<br/>with Recent Logs]
+    GenerateReport -->|No| RetryOption{Retry?}
+    CreateReport --> DownloadReport[Download Report JSON]
+    DownloadReport --> RetryOption
+    
     RetryOption -->|Yes| StartProcess
     RetryOption -->|No| UploadChoice
     
@@ -170,6 +193,16 @@ flowchart TB
 - **Zoom Controls**: Available during preview
 - **Copy to Clipboard**: Available for results
 - **Settings Access**: Available at any time
+- **Log Viewer**: Accessible at any time via "View Logs" button
+- **Error Reporting**: Auto-triggered on critical errors
+
+### Error Logging Flow
+1. **Automatic Capture**: All errors logged without user intervention
+2. **User Access**: Click "View Logs" to see system events
+3. **Filtering**: Filter by INFO, WARNING, ERROR, DEBUG levels
+4. **Export**: Download logs as JSON or TXT
+5. **Error Reports**: Generate comprehensive report on failures
+6. **Privacy**: No sensitive data (file contents) logged
 
 ## State Transitions
 

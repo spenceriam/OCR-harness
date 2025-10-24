@@ -427,22 +427,461 @@ class ModelService:
             self.reload_vllm_server()
 ```
 
-## 9. Testing Strategy
+## 9. Error Logging and Diagnostics System
 
-### 9.1 Unit Tests
+### 9.1 Logging Architecture
+
+```mermaid
+graph TB
+    subgraph "Frontend Logger"
+        FE[Frontend Events]
+        FErr[Error Boundary]
+        FLog[Log Collector]
+    end
+    
+    subgraph "Backend Logger"
+        BE[Backend Events]
+        BErr[Exception Handler]
+        BLog[Log Aggregator]
+    end
+    
+    subgraph "Log Storage"
+        LS[Session Store]
+        LQ[Log Queue]
+    end
+    
+    subgraph "User Interface"
+        VL[View Logs Button]
+        LP[Log Panel]
+        LE[Export Logs]
+    end
+    
+    FE --> FLog
+    FErr --> FLog
+    FLog --> LS
+    
+    BE --> BLog
+    BErr --> BLog
+    BLog --> LS
+    
+    LS --> LQ
+    LQ --> LP
+    VL --> LP
+    LP --> LE
+```
+
+### 9.2 Log Data Structure
+
+```typescript
+interface LogEntry {
+  id: string;
+  timestamp: Date;
+  level: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG';
+  source: 'FRONTEND' | 'BACKEND' | 'MODEL' | 'SYSTEM';
+  component: string;
+  message: string;
+  details?: {
+    errorCode?: string;
+    stackTrace?: string;
+    userAction?: string;
+    fileName?: string;  // Only filename, not content
+    fileSize?: number;
+    processingTime?: number;
+    modelConfig?: object;
+  };
+  sessionId: string;
+}
+
+interface LogSession {
+  sessionId: string;
+  startTime: Date;
+  logs: LogEntry[];
+  systemInfo: {
+    browser: string;
+    os: string;
+    screenResolution: string;
+    modelUsed: string;
+  };
+}
+```
+
+### 9.3 Frontend Logger Implementation
+
+```typescript
+// lib/logger.ts
+class FrontendLogger {
+  private logs: LogEntry[] = [];
+  private maxLogs = 1000;
+  private sessionId: string;
+
+  constructor() {
+    this.sessionId = this.generateSessionId();
+    this.setupErrorBoundary();
+    this.interceptConsoleErrors();
+  }
+
+  log(level: LogLevel, message: string, details?: any) {
+    const entry: LogEntry = {
+      id: nanoid(),
+      timestamp: new Date(),
+      level,
+      source: 'FRONTEND',
+      component: this.getCallerComponent(),
+      message,
+      details: this.sanitizeDetails(details),
+      sessionId: this.sessionId
+    };
+    
+    this.logs.push(entry);
+    this.trimLogs();
+    this.persistToStorage(entry);
+  }
+
+  private sanitizeDetails(details: any): any {
+    // Remove sensitive information
+    const sanitized = { ...details };
+    delete sanitized.fileContent;
+    delete sanitized.extractedText;
+    return sanitized;
+  }
+
+  private setupErrorBoundary() {
+    window.addEventListener('error', (event) => {
+      this.log('ERROR', event.message, {
+        stackTrace: event.error?.stack,
+        filename: event.filename,
+        line: event.lineno,
+        column: event.colno
+      });
+    });
+
+    window.addEventListener('unhandledrejection', (event) => {
+      this.log('ERROR', 'Unhandled Promise Rejection', {
+        reason: event.reason
+      });
+    });
+  }
+
+  exportLogs(format: 'json' | 'txt'): Blob {
+    if (format === 'json') {
+      return new Blob([JSON.stringify(this.logs, null, 2)], {
+        type: 'application/json'
+      });
+    }
+    
+    const text = this.logs.map(log => 
+      `[${log.timestamp.toISOString()}] ${log.level} - ${log.component}: ${log.message}`
+    ).join('\n');
+    
+    return new Blob([text], { type: 'text/plain' });
+  }
+}
+
+export const logger = new FrontendLogger();
+```
+
+### 9.4 Backend Logger Implementation
+
+```python
+# backend/utils/logger.py
+import logging
+import json
+from datetime import datetime
+from typing import Dict, Any
+from fastapi import Request
+from uuid import uuid4
+
+class BackendLogger:
+    def __init__(self):
+        self.logs = []
+        self.max_logs = 1000
+        self.setup_logging()
+    
+    def setup_logging(self):
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        
+        # Custom handler to capture logs
+        handler = LogCollectorHandler(self)
+        logging.getLogger().addHandler(handler)
+    
+    def log(self, level: str, message: str, details: Dict[str, Any] = None):
+        """Log an entry with sanitized details"""
+        entry = {
+            "id": str(uuid4()),
+            "timestamp": datetime.now().isoformat(),
+            "level": level,
+            "source": "BACKEND",
+            "component": self.get_caller_info(),
+            "message": message,
+            "details": self.sanitize_details(details),
+            "sessionId": self.get_session_id()
+        }
+        
+        self.logs.append(entry)
+        self.trim_logs()
+        return entry
+    
+    def sanitize_details(self, details: Dict[str, Any]) -> Dict[str, Any]:
+        """Remove sensitive information from logs"""
+        if not details:
+            return {}
+        
+        sanitized = details.copy()
+        # Remove file contents and extracted text
+        sensitive_keys = ['file_content', 'extracted_text', 'image_data']
+        for key in sensitive_keys:
+            sanitized.pop(key, None)
+        
+        return sanitized
+    
+    def get_logs(self, session_id: str = None, level: str = None):
+        """Retrieve logs with optional filtering"""
+        filtered_logs = self.logs
+        
+        if session_id:
+            filtered_logs = [l for l in filtered_logs if l.get('sessionId') == session_id]
+        
+        if level:
+            filtered_logs = [l for l in filtered_logs if l.get('level') == level]
+        
+        return filtered_logs
+
+logger = BackendLogger()
+
+# Exception handler middleware
+async def log_exceptions(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.log('ERROR', f"Unhandled exception: {str(e)}", {
+            "path": request.url.path,
+            "method": request.method,
+            "stackTrace": traceback.format_exc()
+        })
+        raise
+```
+
+### 9.5 Log Viewer UI Component
+
+```typescript
+// components/LogViewer.tsx
+import { useState, useEffect } from 'react';
+import { logger } from '@/lib/logger';
+
+const LogViewer = ({ isOpen, onClose }) => {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filter, setFilter] = useState<LogLevel | 'ALL'>('ALL');
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLogs(logger.getLogs());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredLogs = logs.filter(log => 
+    filter === 'ALL' || log.level === filter
+  );
+
+  const exportLogs = (format: 'json' | 'txt') => {
+    const blob = logger.exportLogs(format);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ocr-harness-logs-${Date.now()}.${format}`;
+    a.click();
+  };
+
+  const getLevelColor = (level: LogLevel) => {
+    switch (level) {
+      case 'ERROR': return 'text-red-500';
+      case 'WARNING': return 'text-yellow-500';
+      case 'INFO': return 'text-blue-500';
+      case 'DEBUG': return 'text-gray-500';
+    }
+  };
+
+  return (
+    <Sheet open={isOpen} onOpenChange={onClose}>
+      <SheetContent className="w-[600px] sm:max-w-[600px]">
+        <SheetHeader>
+          <SheetTitle>System Logs</SheetTitle>
+        </SheetHeader>
+        
+        <div className="flex gap-2 my-4">
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All</SelectItem>
+              <SelectItem value="ERROR">Errors</SelectItem>
+              <SelectItem value="WARNING">Warnings</SelectItem>
+              <SelectItem value="INFO">Info</SelectItem>
+              <SelectItem value="DEBUG">Debug</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setLogs([])}
+          >
+            Clear
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => exportLogs('txt')}
+          >
+            Export TXT
+          </Button>
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => exportLogs('json')}
+          >
+            Export JSON
+          </Button>
+        </div>
+        
+        <div className="h-[500px] overflow-y-auto font-mono text-xs space-y-1 bg-gray-50 dark:bg-gray-900 p-2 rounded">
+          {filteredLogs.map((log) => (
+            <div key={log.id} className="flex flex-col gap-1 border-b border-gray-200 dark:border-gray-700 pb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400">
+                  [{new Date(log.timestamp).toLocaleTimeString()}]
+                </span>
+                <span className={getLevelColor(log.level)}>
+                  {log.level}
+                </span>
+                <span className="text-gray-600 dark:text-gray-400">
+                  {log.component}
+                </span>
+              </div>
+              <div className="ml-4 text-gray-700 dark:text-gray-300">
+                {log.message}
+              </div>
+              {log.details && (
+                <details className="ml-4 text-gray-500 dark:text-gray-500">
+                  <summary className="cursor-pointer">Details</summary>
+                  <pre className="mt-1 text-xs overflow-x-auto">
+                    {JSON.stringify(log.details, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        <div className="flex items-center gap-2 mt-4">
+          <Checkbox 
+            checked={autoScroll} 
+            onCheckedChange={setAutoScroll}
+          />
+          <Label>Auto-scroll</Label>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+```
+
+### 9.6 Error Report Generation
+
+```typescript
+// components/ErrorReporter.tsx
+const ErrorReporter = ({ error, onClose }) => {
+  const generateReport = async () => {
+    const logs = logger.getLogs();
+    const errorLogs = logs.filter(l => l.level === 'ERROR');
+    
+    const report = {
+      timestamp: new Date().toISOString(),
+      error: {
+        message: error.message,
+        stack: error.stack
+      },
+      recentErrors: errorLogs.slice(-10),
+      systemInfo: {
+        userAgent: navigator.userAgent,
+        screen: `${screen.width}x${screen.height}`,
+        platform: navigator.platform,
+        language: navigator.language
+      },
+      sessionId: logger.sessionId
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: 'application/json'
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `error-report-${Date.now()}.json`;
+    a.click();
+  };
+  
+  return (
+    <Alert className="mb-4">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Error Occurred</AlertTitle>
+      <AlertDescription>
+        {error.message}
+        <div className="mt-2 flex gap-2">
+          <Button size="sm" onClick={generateReport}>
+            Generate Error Report
+          </Button>
+          <Button size="sm" variant="outline" onClick={onClose}>
+            Dismiss
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+  );
+};
+```
+
+### 9.7 UI Integration
+
+```
+Updated Layout:
+┌────────────────────────────────────────────────────────────────┐
+│  [Logo] OCR-harness                                            │
+│         LightOn OCR 1B (1025)      [View Logs] [Settings ⚙]   │
+├────────────────────────────────────────────────────────────────┤
+```
+
+The "View Logs" button opens a slide-out panel showing real-time logs with filtering and export capabilities.
+
+## 10. Testing Strategy
+
+### 10.1 Unit Tests
 - Component rendering tests
 - API endpoint tests
 - File processing utilities
 - Export format generators
+- Logger functionality tests
 
-### 9.2 Integration Tests
+### 10.2 Integration Tests
 - Full upload-to-export flow
 - Model switching
 - Error scenarios
 - Multi-page document handling
+- Log collection and export
 
-### 9.3 E2E Tests
+### 10.3 E2E Tests
 - Complete user workflows
 - Cross-browser testing
 - Performance benchmarks
 - Mobile blocking verification
+- Error reporting flow

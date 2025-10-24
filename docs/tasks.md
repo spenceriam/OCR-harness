@@ -770,6 +770,339 @@ def test_process_image():
 
 ---
 
+## Epic 8: Error Logging and Diagnostics
+
+### Story 8.1: Implement Frontend Logger System
+**Priority:** P1 - High
+**Estimate:** 4 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Create a comprehensive frontend logging system that captures all errors and events without requiring DevTools.
+
+#### Acceptance Criteria
+- [ ] Logger class implemented with log levels
+- [ ] Error boundary captures React errors
+- [ ] Window error events intercepted
+- [ ] Logs stored in session memory
+- [ ] Sanitization removes sensitive data
+- [ ] Export functionality for JSON and TXT
+
+#### Implementation Details
+```typescript
+// lib/logger.ts
+class FrontendLogger {
+  private logs: LogEntry[] = [];
+  private maxLogs = 1000;
+  
+  log(level: LogLevel, message: string, details?: any) {
+    const entry = {
+      id: nanoid(),
+      timestamp: new Date(),
+      level,
+      source: 'FRONTEND',
+      component: this.getCallerComponent(),
+      message,
+      details: this.sanitizeDetails(details),
+      sessionId: this.sessionId
+    };
+    this.logs.push(entry);
+    this.trimLogs();
+  }
+  
+  sanitizeDetails(details: any) {
+    // Remove fileContent, extractedText, etc.
+  }
+  
+  setupErrorBoundary() {
+    window.addEventListener('error', (event) => {
+      this.log('ERROR', event.message, {
+        stackTrace: event.error?.stack
+      });
+    });
+  }
+}
+```
+
+#### Testing
+- Errors are captured automatically
+- Logs don't contain sensitive data
+- Export generates valid files
+- Memory limit enforced (1000 logs max)
+
+---
+
+### Story 8.2: Implement Backend Logger System
+**Priority:** P1 - High
+**Estimate:** 4 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Create backend logging system that integrates with FastAPI and captures all server-side errors.
+
+#### Acceptance Criteria
+- [ ] Logger class for backend events
+- [ ] Exception middleware captures all errors
+- [ ] Integration with Python logging module
+- [ ] Session-based log storage
+- [ ] API endpoint for retrieving logs
+- [ ] Sanitization of sensitive data
+
+#### Implementation Details
+```python
+# backend/utils/logger.py
+class BackendLogger:
+    def __init__(self):
+        self.logs = []
+        self.max_logs = 1000
+    
+    def log(self, level: str, message: str, details: dict = None):
+        entry = {
+            "id": str(uuid4()),
+            "timestamp": datetime.now().isoformat(),
+            "level": level,
+            "source": "BACKEND",
+            "message": message,
+            "details": self.sanitize_details(details)
+        }
+        self.logs.append(entry)
+        
+    def sanitize_details(self, details):
+        # Remove sensitive information
+        pass
+
+# backend/middleware/error_handler.py
+async def log_exceptions(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        logger.log('ERROR', str(e), {
+            "path": request.url.path,
+            "stackTrace": traceback.format_exc()
+        })
+        raise
+```
+
+#### Testing
+- All exceptions are logged
+- API errors include proper context
+- Logs accessible via API
+- No sensitive data in logs
+
+---
+
+### Story 8.3: Build Log Viewer Component
+**Priority:** P1 - High
+**Estimate:** 5 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Create a user-friendly log viewer that displays system logs without requiring DevTools.
+
+#### Acceptance Criteria
+- [ ] Slide-out panel UI component
+- [ ] Real-time log updates (polling)
+- [ ] Filter by log level
+- [ ] Search functionality
+- [ ] Export logs as JSON or TXT
+- [ ] Clear logs option
+- [ ] Auto-scroll toggle
+
+#### Implementation Details
+```typescript
+// components/LogViewer.tsx
+const LogViewer = ({ isOpen, onClose }) => {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filter, setFilter] = useState<'ALL' | LogLevel>('ALL');
+  
+  useEffect(() => {
+    // Poll for new logs every second
+    const interval = setInterval(() => {
+      setLogs(logger.getLogs());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  const exportLogs = (format: 'json' | 'txt') => {
+    const blob = logger.exportLogs(format);
+    downloadBlob(blob, `logs-${Date.now()}.${format}`);
+  };
+  
+  return (
+    <Sheet open={isOpen}>
+      <SheetContent className="w-[600px]">
+        <div className="log-viewer">
+          {/* Filter controls */}
+          {/* Log entries list */}
+          {/* Export buttons */}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+};
+```
+
+#### Testing
+- Log viewer opens and closes properly
+- Logs update in real-time
+- Filters work correctly
+- Export generates valid files
+- UI handles 1000+ logs smoothly
+
+---
+
+### Story 8.4: Add Error Report Generation
+**Priority:** P2 - Medium
+**Estimate:** 3 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Implement automatic error report generation for critical failures.
+
+#### Acceptance Criteria
+- [ ] Error report button appears on critical errors
+- [ ] Report includes recent error logs
+- [ ] System information collected
+- [ ] Sanitized for privacy
+- [ ] Downloads as JSON file
+- [ ] User-friendly format
+
+#### Implementation Details
+```typescript
+// components/ErrorReporter.tsx
+const generateErrorReport = () => {
+  const report = {
+    timestamp: new Date().toISOString(),
+    error: {
+      message: currentError.message,
+      stack: currentError.stack
+    },
+    recentErrors: logger.getErrors().slice(-10),
+    systemInfo: {
+      browser: navigator.userAgent,
+      screen: `${screen.width}x${screen.height}`,
+      modelUsed: getCurrentModel()
+    },
+    sessionId: logger.sessionId
+  };
+  
+  downloadJSON(report, `error-report-${Date.now()}.json`);
+};
+```
+
+#### Testing
+- Error report generates on demand
+- Contains relevant debugging info
+- No sensitive data included
+- Downloads successfully
+- Format is readable
+
+---
+
+### Story 8.5: Integrate Logging Throughout Application
+**Priority:** P1 - High
+**Estimate:** 3 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Add logging calls throughout the application to capture all important events.
+
+#### Acceptance Criteria
+- [ ] Log file uploads (metadata only)
+- [ ] Log processing start/end
+- [ ] Log API calls and responses
+- [ ] Log configuration changes
+- [ ] Log export actions
+- [ ] Log performance metrics
+
+#### Implementation Details
+```typescript
+// In upload handler
+logger.log('INFO', 'File uploaded', {
+  fileName: file.name,
+  fileSize: file.size,
+  fileType: file.type
+});
+
+// In processing
+logger.log('INFO', 'Processing started', {
+  modelConfig: getConfig(),
+  fileName: file.name
+});
+
+// In API calls
+logger.log('DEBUG', 'API call', {
+  endpoint: url,
+  method: 'POST',
+  responseTime: duration
+});
+
+// In exports
+logger.log('INFO', 'Export generated', {
+  format: exportFormat,
+  resultLength: text.length
+});
+```
+
+#### Testing
+- All user actions are logged
+- Performance metrics captured
+- Error scenarios logged with context
+- Log volume is reasonable
+
+---
+
+### Story 8.6: Add Log API Endpoints
+**Priority:** P2 - Medium
+**Estimate:** 2 hours
+**Assigned to:** Dev Agent
+
+#### Context
+Create API endpoints for log management and retrieval.
+
+#### Acceptance Criteria
+- [ ] GET /api/logs - retrieve logs
+- [ ] GET /api/logs/export - export logs
+- [ ] DELETE /api/logs - clear logs
+- [ ] Filtering by level and session
+- [ ] Pagination for large log sets
+
+#### Implementation Details
+```python
+# backend/routes/logs.py
+@router.get("/api/logs")
+async def get_logs(
+    session_id: str = None,
+    level: str = None,
+    limit: int = 100
+):
+    logs = logger.get_logs(session_id, level)
+    return {"logs": logs[:limit]}
+
+@router.get("/api/logs/export")
+async def export_logs(format: str = "json"):
+    logs = logger.get_logs()
+    if format == "json":
+        return JSONResponse(content=logs)
+    else:
+        text = format_logs_as_text(logs)
+        return PlainTextResponse(content=text)
+
+@router.delete("/api/logs")
+async def clear_logs():
+    logger.clear()
+    return {"message": "Logs cleared"}
+```
+
+#### Testing
+- API returns logs correctly
+- Filtering works
+- Export formats are valid
+- Clear removes all logs
+
+---
+
 ## Deployment Readiness Checklist
 
 ### Pre-Deployment
@@ -777,6 +1110,9 @@ def test_process_image():
 - [ ] Tests passing with >60% coverage
 - [ ] Documentation complete
 - [ ] Error handling comprehensive
+- [ ] Error logging system operational
+- [ ] Log viewer accessible to users
+- [ ] Export functionality tested
 - [ ] Performance optimized
 
 ### Deployment Steps
@@ -785,11 +1121,14 @@ def test_process_image():
 3. Configure production environment variables
 4. Deploy to staging environment
 5. Run smoke tests
-6. Deploy to production (Vercel for frontend)
+6. Verify error logging works
+7. Test log export functionality
+8. Deploy to production (Vercel for frontend)
 
 ### Post-Deployment
 - [ ] Monitor error logs
 - [ ] Check performance metrics
+- [ ] Review user-submitted error reports
 - [ ] Gather user feedback
 - [ ] Plan next iteration features
 
@@ -800,3 +1139,5 @@ def test_process_image():
 - Successful export in all three formats
 - Desktop-only enforcement working
 - Model swapping without code changes
+- Error logging captures all failures
+- Users can export logs without DevTools

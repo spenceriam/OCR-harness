@@ -124,7 +124,44 @@
 #### R7.3: Error Handling
 **WHEN** processing fails  
 **THE** system **SHALL** display clear error messages  
-**AND** allow the user to retry or upload a new file  
+**AND** allow the user to retry or upload a new file
+
+### R8: Error Logging and Diagnostics Requirements
+
+#### R8.1: Comprehensive Logging
+**THE** system **SHALL** capture all errors, warnings, and key events  
+**IN** a structured log format accessible to users  
+**WITHOUT** requiring browser DevTools access  
+
+#### R8.2: Log Collection
+**THE** system **SHALL** maintain session-based logs containing:
+- Timestamp for each event
+- Log level (INFO, WARNING, ERROR, DEBUG)
+- Component source (Frontend/Backend/Model)
+- Error messages and stack traces
+- User actions leading to errors
+- System performance metrics
+
+#### R8.3: Log Viewer Interface
+**THE** system **SHALL** provide a diagnostic panel  
+**ACCESSIBLE** via a "View Logs" button in the UI  
+**DISPLAYING** formatted logs with filtering capabilities  
+
+#### R8.4: Log Export
+**THE** system **SHALL** allow users to export logs  
+**AS** a downloadable JSON or TXT file  
+**FOR** offline analysis or support tickets  
+
+#### R8.5: Privacy in Logging
+**THE** system **SHALL NOT** log:
+- Actual file contents or extracted text
+- Personal identifiable information
+- Only log metadata and processing information
+
+#### R8.6: Automatic Error Reporting
+**IF** a critical error occurs  
+**THE** system **SHALL** display a "Generate Error Report" button  
+**WHICH** creates a sanitized log bundle for support  
 
 ## Acceptance Criteria
 

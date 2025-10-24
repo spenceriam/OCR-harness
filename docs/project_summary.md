@@ -17,6 +17,9 @@
 ✅ Configurable model parameters  
 ✅ Single command startup (`npm run start`)  
 ✅ Model flexibility through YAML configuration  
+✅ **Comprehensive error logging system**  
+✅ **User-accessible log viewer (no DevTools needed)**  
+✅ **Log export for debugging and support**  
 
 ### Technology Stack
 
@@ -207,6 +210,37 @@ vercel --prod
 2. Processing errors → Retry option
 3. Network errors → Connection check
 4. Model errors → Fallback message
+
+### Error Logging System
+- **Frontend Logger**: Captures all browser errors, React errors, and user actions
+- **Backend Logger**: Records API errors, processing failures, and system events
+- **Log Viewer**: Built-in UI panel accessible via "View Logs" button
+- **Log Levels**: INFO, WARNING, ERROR, DEBUG
+- **Privacy**: No file contents or extracted text logged
+- **Export Options**: JSON or TXT format for debugging
+- **Error Reports**: One-click generation for support tickets
+- **Session-Based**: Logs cleared after session ends
+- **Max Logs**: 1000 entries per session (auto-trim)
+
+### Log Data Structure
+```typescript
+{
+  id: string,
+  timestamp: Date,
+  level: 'INFO' | 'WARNING' | 'ERROR' | 'DEBUG',
+  source: 'FRONTEND' | 'BACKEND' | 'MODEL',
+  component: string,
+  message: string,
+  details: {
+    // Sanitized metadata only
+    fileName?: string,
+    fileSize?: number,
+    processingTime?: number,
+    errorCode?: string,
+    stackTrace?: string
+  }
+}
+```
 
 ### Testing Checklist
 - [ ] Desktop access works
