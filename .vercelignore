@@ -1,0 +1,6 @@
+# Ignore backend files during Vercel deployment
+backend/
+scripts/
+package.json
+package-lock.json
+node_modules/

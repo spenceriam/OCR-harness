@@ -1,0 +1,9 @@
+# Vercel Configuration
+# This tells Vercel to only build the frontend
+
+{
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/.next",
+  "framework": "nextjs",
+  "installCommand": "cd frontend && npm install"
+}
