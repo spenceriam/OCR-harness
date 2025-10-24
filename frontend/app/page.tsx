@@ -1,20 +1,34 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { api } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { FileText, Settings, Download, Upload } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { downloadBlob, formatBytes } from '@/lib/utils';
+import { OCRConfig } from '@/lib/types';
 import * as XLSX from 'xlsx';
+
+// Lazy load components for better performance
+const DocumentPreview = lazy(() => import('@/components/DocumentPreview').then(m => ({ default: m.DocumentPreview })));
+const SettingsPanel = lazy(() => import('@/components/SettingsPanel').then(m => ({ default: m.SettingsPanel })));
+const LogViewer = lazy(() => import('@/components/LogViewer').then(m => ({ default: m.LogViewer })));
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [currentModel, setCurrentModel] = useState<string>('Loading...');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [fileType, setFileType] = useState<'pdf' | 'image' | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [extractedText, setExtractedText] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [ocrConfig, setOcrConfig] = useState<OCRConfig>({
+    temperature: 0.2,
+    top_p: 0.9,
+    max_tokens: 6500,
+  });
 
   // Check for mobile on mount
   useEffect(() => {
@@ -48,6 +62,11 @@ export default function Home() {
       setUploadedFile(file);
       setExtractedText('');
       setError('');
+
+      // Determine file type
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      setFileType(isPdf ? 'pdf' : 'image');
+
       logger.log('INFO', 'File uploaded', {
         filename: file.name,
         size: file.size,
@@ -74,9 +93,12 @@ export default function Home() {
     setError('');
 
     try {
-      logger.log('INFO', 'Processing started', { filename: uploadedFile.name });
+      logger.log('INFO', 'Processing started', {
+        filename: uploadedFile.name,
+        config: ocrConfig
+      });
 
-      const result = await api.processDocument(uploadedFile);
+      const result = await api.processDocument(uploadedFile, ocrConfig);
 
       if (result.success && result.text) {
         setExtractedText(result.text);
@@ -153,11 +175,17 @@ export default function Home() {
             <p className="text-sm text-gray-600 dark:text-gray-400">{currentModel}</p>
           </div>
           <div className="flex gap-2">
-            <button className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+            <button
+              onClick={() => setShowLogs(true)}
+              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+            >
               <FileText className="w-4 h-4" />
               View Logs
             </button>
-            <button className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2">
+            <button
+              onClick={() => setShowSettings(true)}
+              className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+            >
               <Settings className="w-4 h-4" />
               Settings
             </button>
@@ -168,9 +196,9 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto p-6 space-y-6">
         {/* Upload Section */}
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Upload Zone */}
-          <div className="col-span-1">
+          <div className="lg:col-span-1">
             <div
               {...getRootProps()}
               className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragActive
@@ -211,8 +239,22 @@ export default function Home() {
           </div>
 
           {/* Preview/Results Section */}
-          <div className="col-span-2">
-            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 min-h-[500px]">
+          <div className="lg:col-span-2 space-y-6">
+            {/* Document Preview */}
+            {uploadedFile && (
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden h-[400px]">
+                <Suspense fallback={
+                  <div className="flex items-center justify-center h-full">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                }>
+                  <DocumentPreview file={uploadedFile} fileType={fileType} />
+                </Suspense>
+              </div>
+            )}
+
+            {/* Extracted Text */}
+            <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 min-h-[400px]">
               <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
                 Extracted Text
               </h2>
@@ -266,6 +308,23 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Modals - Lazy loaded */}
+      <Suspense fallback={null}>
+        <SettingsPanel
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          currentConfig={ocrConfig}
+          onConfigChange={setOcrConfig}
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <LogViewer
+          isOpen={showLogs}
+          onClose={() => setShowLogs(false)}
+        />
+      </Suspense>
     </div>
   );
 }
