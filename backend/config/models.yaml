@@ -1,0 +1,19 @@
+models:
+  default: "lighton-ocr-1b"
+
+  configurations:
+    lighton-ocr-1b:
+      name: "LightOnOCR-1B-1025"
+      display_name: "LightOn OCR 1B (1025)"
+      model_path: "lightonai/LightOnOCR-1B-1025"
+      server_port: 8001
+      parameters:
+        temperature: 0.2
+        top_p: 0.9
+        max_tokens: 6500
+        render_dpi: 300
+        max_dimension: 1300
+      requirements:
+        min_ram_gb: 8
+        recommended_ram_gb: 16
+        gpu_recommended: true
