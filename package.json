@@ -1,0 +1,21 @@
+{
+  "name": "ocr-harness",
+  "version": "1.0.0",
+  "description": "OCR test harness for evaluating different LLM models",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start.js",
+    "start:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && uvicorn app.main:app --reload --port 8000",
+    "start:vllm": "cd backend && python start_vllm.py",
+    "install:all": "npm install && cd frontend && npm install",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "ocr",
+    "llm",
+    "document-processing"
+  ],
+  "author": "",
+  "license": "MIT"
+}
